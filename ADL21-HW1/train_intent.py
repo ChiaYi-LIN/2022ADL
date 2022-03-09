@@ -77,57 +77,6 @@ def main(args):
     
     trainer(train_loader, dev_loader, model, args)
 
-
-def parse_args() -> Namespace:
-    parser = ArgumentParser()
-    parser.add_argument(
-        "--data_dir",
-        type=Path,
-        help="Directory to the dataset.",
-        default="./data/intent/",
-    )
-    parser.add_argument(
-        "--cache_dir",
-        type=Path,
-        help="Directory to the preprocessed caches.",
-        default="./cache/intent/",
-    )
-    parser.add_argument(
-        "--ckpt_dir",
-        type=Path,
-        help="Directory to save the model file.",
-        default="./ckpt/intent/",
-    )
-
-    # data
-    parser.add_argument("--max_len", type=int, default=128)
-
-    # model
-    parser.add_argument("--seed", type=int, default=1121326)
-    parser.add_argument("--hidden_size", type=int, default=512)
-    parser.add_argument("--num_layers", type=int, default=2)
-    parser.add_argument("--dropout", type=float, default=0.15)
-    parser.add_argument("--bidirectional", type=bool, default=True)
-
-    # optimizer
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--momentum", type=float, default=0.99)
-    parser.add_argument("--weight_decay", type=float, default=1e-5)
-    
-
-    # data loader
-    parser.add_argument("--batch_size", type=int, default=128)
-
-    # training
-    parser.add_argument(
-        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
-    )
-    parser.add_argument("--num_epoch", type=int, default=100)
-    parser.add_argument("--early_stop", type=float, default=20)
-
-    args = parser.parse_args()
-    return args
-
 def trainer(train_loader, valid_loader, model, args):
 
     criterion = nn.CrossEntropyLoss().to(args.device)
@@ -188,6 +137,55 @@ def trainer(train_loader, valid_loader, model, args):
         if early_stop_count >= args.early_stop:
             print('\nModel is not improving, so we halt the training session.')
             return
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--data_dir",
+        type=Path,
+        help="Directory to the dataset.",
+        default="./data/intent/",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        type=Path,
+        help="Directory to the preprocessed caches.",
+        default="./cache/intent/",
+    )
+    parser.add_argument(
+        "--ckpt_dir",
+        type=Path,
+        help="Directory to save the model file.",
+        default="./ckpt/intent/",
+    )
+
+    # data
+    parser.add_argument("--max_len", type=int, default=128)
+
+    # model
+    parser.add_argument("--seed", type=int, default=1121326)
+    parser.add_argument("--hidden_size", type=int, default=512)
+    parser.add_argument("--num_layers", type=int, default=1)
+    parser.add_argument("--dropout", type=float, default=0.15)
+    parser.add_argument("--bidirectional", type=bool, default=True)
+
+    # optimizer
+    # parser.add_argument("--lr", type=float, default=1e-3)
+    # parser.add_argument("--momentum", type=float, default=0.99)
+    # parser.add_argument("--weight_decay", type=float, default=1e-5)
+
+    # data loader
+    parser.add_argument("--batch_size", type=int, default=128)
+
+    # training
+    parser.add_argument(
+        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
+    )
+    parser.add_argument("--num_epoch", type=int, default=400)
+    parser.add_argument("--early_stop", type=float, default=100)
+
+    args = parser.parse_args()
+    return args
 
 if __name__ == "__main__":
     if torch.cuda.is_available():

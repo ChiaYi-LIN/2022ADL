@@ -27,7 +27,7 @@ class SeqClassifier(torch.nn.Module):
                             bidirectional=True)
         
         self.fc = nn.Linear(2 * hidden_size, num_class)
-        self.act = nn.Softmax()
+        self.act = nn.Softmax(dim=1)
 
     # @property
     # def encoder_output_size(self) -> int:
