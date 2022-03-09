@@ -3,3 +3,4 @@ data/
 cache/
 __pycache__
 glove.840B.300d.txt
+runs/

@@ -22,7 +22,7 @@ blis==0.7.4
     #   thinc
 cachetools==4.2.1
     # via google-auth
-catalogue==2.0.1
+catalogue==2.0.6
     # via
     #   spacy
     #   srsly
@@ -42,7 +42,7 @@ cymem==2.0.5
     #   thinc
 flatbuffers==1.12
     # via tensorflow
-fsspec[http]==0.8.7
+fsspec[http]==2022.2.0
     # via pytorch-lightning
 future==0.18.2
     # via pytorch-lightning
@@ -70,7 +70,13 @@ jinja2==2.11.3
     # via spacy
 joblib==1.0.1
     # via scikit-learn
+keras==2.8.0
+    # via tensorflow
 keras-preprocessing==1.1.2
+    # via tensorflow
+langcodes==3.3.0
+    # via spacy
+libclang==13.0.0
     # via tensorflow
 markdown==3.3.4
     # via tensorboard
@@ -85,12 +91,13 @@ murmurhash==1.0.5
     #   preshed
     #   spacy
     #   thinc
-numpy==1.19.5
+numpy==1.22.3
     # via
     #   blis
     #   h5py
     #   keras-preprocessing
     #   opt-einsum
+    #   pandas
     #   pytorch-lightning
     #   scikit-learn
     #   scipy
@@ -99,13 +106,18 @@ numpy==1.19.5
     #   tensorboard
     #   tensorflow
     #   thinc
-    #   torch
+    #   torchmetrics
 oauthlib==3.1.0
     # via requests-oauthlib
 opt-einsum==3.3.0
     # via tensorflow
 packaging==20.9
-    # via spacy
+    # via
+    #   pytorch-lightning
+    #   spacy
+    #   torchmetrics
+pandas==1.4.1
+    # via -r requirements.in
 pathy==0.4.0
     # via spacy
 preshed==3.0.5
@@ -122,14 +134,22 @@ pyasn1==0.4.8
     #   rsa
 pyasn1-modules==0.2.8
     # via google-auth
-pydantic==1.7.3
+pydantic==1.8.2
     # via
     #   spacy
     #   thinc
+pydeprecate==0.3.1
+    # via
+    #   pytorch-lightning
+    #   torchmetrics
 pyparsing==2.4.7
     # via packaging
-pytorch-lightning==1.2.3
+python-dateutil==2.8.2
+    # via pandas
+pytorch-lightning==1.5.10
     # via -r requirements.in
+pytz==2021.3
+    # via pandas
 pyyaml==5.3.1
     # via pytorch-lightning
 requests==2.25.1
@@ -159,38 +179,47 @@ six==1.15.0
     #   h5py
     #   keras-preprocessing
     #   protobuf
-    #   tensorboard
+    #   python-dateutil
     #   tensorflow
 smart-open==3.0.0
     # via pathy
-spacy==3.0.5
+spacy==3.2.2
     # via -r requirements.in
-spacy-legacy==3.0.1
+spacy-legacy==3.0.9
     # via spacy
-srsly==2.4.0
+spacy-loggers==1.0.1
+    # via spacy
+srsly==2.4.2
     # via
     #   spacy
     #   thinc
-tensorboard==2.4.1
+tensorboard==2.8.0
     # via
     #   pytorch-lightning
     #   tensorflow
+tensorboard-data-server==0.6.1
+    # via tensorboard
 tensorboard-plugin-wit==1.8.0
     # via tensorboard
-tensorflow==2.4.1
+tensorflow==2.8.0
     # via -r requirements.in
-tensorflow-estimator==2.4.0
+tensorflow-io-gcs-filesystem==0.24.0
     # via tensorflow
 termcolor==1.1.0
     # via tensorflow
-thinc==8.0.2
+tf-estimator-nightly==2.8.0.dev2021122109
+    # via tensorflow
+thinc==8.0.13
     # via spacy
 threadpoolctl==2.1.0
     # via scikit-learn
-torch==1.7.1
+torch==1.10.2
     # via
     #   -r requirements.in
     #   pytorch-lightning
+    #   torchmetrics
+torchmetrics==0.7.2
+    # via pytorch-lightning
 tqdm==4.56.2
     # via
     #   -r requirements.in
@@ -203,6 +232,8 @@ typer==0.3.2
 typing-extensions==3.7.4.3
     # via
     #   aiohttp
+    #   pydantic
+    #   pytorch-lightning
     #   tensorflow
     #   torch
 urllib3==1.26.3
@@ -210,6 +241,7 @@ urllib3==1.26.3
 wasabi==0.8.2
     # via
     #   spacy
+    #   spacy-loggers
     #   thinc
 werkzeug==1.0.1
     # via tensorboard
@@ -217,7 +249,6 @@ wheel==0.36.2
     # via
     #   astunparse
     #   tensorboard
-    #   tensorflow
 wrapt==1.12.1
     # via tensorflow
 yarl==1.6.3
