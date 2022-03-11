@@ -223,13 +223,13 @@ def parse_args() -> Namespace:
     # parser.add_argument("--weight_decay", type=float, default=1e-5)
 
     # data loader
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=512)
 
     # training
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
     )
-    parser.add_argument("--num_epoch", type=int, default=400)
+    parser.add_argument("--num_epoch", type=int, default=1000)
     parser.add_argument("--early_stop", type=float, default=100)
 
     args = parser.parse_args()
