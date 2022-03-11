@@ -77,9 +77,9 @@ def main(args):
     # print(model)
     # model = nn.DataParallel(model)
     
-    trainer(train_loader, dev_loader, model, args)
+    trainer(train_loader, dev_loader, model, args, data[TRAIN], data[DEV])
 
-def trainer(train_loader, valid_loader, model, args):
+def trainer(train_loader, valid_loader, model, args, train_set, val_set):
 
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = torch.optim.Adam(model.parameters()) 
@@ -90,50 +90,61 @@ def trainer(train_loader, valid_loader, model, args):
 
     n_epochs, best_loss, step, early_stop_count = args.num_epoch, math.inf, 0, 0
 
+    best_acc = 0.0
     for epoch in range(n_epochs):
-        model.train() # Set your model to train mode.
-        loss_record = []
+        train_acc = 0.0
+        train_loss = 0.0
+        val_acc = 0.0
+        val_loss = 0.0
 
+        model.train() # Set your model to train mode.
+        
         # tqdm is a package to visualize your training progress.
         train_pbar = tqdm(train_loader, position=0, leave=True)
 
-        for x, y in train_pbar:
+        for x, y, lengths in train_pbar:
             optimizer.zero_grad()               # Set gradient to zero.
             x, y = x.to(args.device), y.to(args.device)   # Move your data to device. 
-            pred = model(x)      
+            pred = model(x, lengths)      
             # print('pred =', pred.shape)       
             # print('y =', y.shape)       
             loss = criterion(pred, y)
             loss.backward()                     # Compute gradient(backpropagation).
             optimizer.step()                    # Update parameters.
             step += 1
-            loss_record.append(loss.detach().item())
+
+            _, train_pred = torch.max(pred, 1) # get the index of the class with the highest probability
+            train_acc += (train_pred.detach() == y.detach()).sum().item()
+            train_loss += loss.item()
             
             # Display current epoch number and loss on tqdm progress bar.
             train_pbar.set_description(f'Epoch [{epoch+1}/{n_epochs}]')
             train_pbar.set_postfix({'loss': loss.detach().item()})
 
-        mean_train_loss = sum(loss_record)/len(loss_record)
         # writer.add_scalar('Loss/train', mean_train_loss, step)
 
         model.eval() # Set your model to evaluation mode.
-        loss_record = []
-        for x, y in valid_loader:
-            x, y = x.to(args.device), y.to(args.device)
-            with torch.no_grad():
-                pred = model(x)
+        with torch.no_grad():
+            for x, y, lengths in valid_loader:
+                x, y = x.to(args.device), y.to(args.device)
+                
+                pred = model(x, lengths)
                 loss = criterion(pred, y)
 
-            loss_record.append(loss.item())
+                _, val_pred = torch.max(pred, 1) 
+                val_acc += (val_pred.cpu() == y.cpu()).sum().item() # get the index of the class with the highest probability
+                val_loss += loss.item()
             
-        mean_valid_loss = sum(loss_record)/len(loss_record)
-        print(f'Epoch [{epoch+1}/{n_epochs}]: Train loss: {mean_train_loss:.4f}, Valid loss: {mean_valid_loss:.4f}')
+        print('[{:03d}/{:03d}] Train Acc: {:3.6f} Loss: {:3.6f} | Val Acc: {:3.6f} loss: {:3.6f}'.format(
+            epoch + 1, n_epochs, train_acc/len(train_set), train_loss/len(train_loader), val_acc/len(val_set), val_loss/len(valid_loader)
+        ))
+        
         # writer.add_scalar('Loss/valid', mean_valid_loss, step)
 
-        if mean_valid_loss < best_loss:
-            best_loss = mean_valid_loss
+        if val_acc > best_acc:
+            best_acc = val_acc
             torch.save(model.state_dict(), args.ckpt_dir / "model.ckpt") # Save your best model
-            print('Saving model with loss {:.3f}...'.format(best_loss))
+            print('saving model with acc {:.3f}'.format(best_acc/len(val_set)))
             early_stop_count = 0
         else: 
             early_stop_count += 1
@@ -167,10 +178,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--max_len", type=int, default=128)
 
     # model
-    parser.add_argument("--seed", type=int, default=1121326)
-    parser.add_argument("--hidden_size", type=int, default=512)
-    parser.add_argument("--num_layers", type=int, default=1)
-    parser.add_argument("--dropout", type=float, default=0)
+    parser.add_argument("--seed", type=int, default=326)
+    parser.add_argument("--hidden_size", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=3)
+    parser.add_argument("--dropout", type=float, default=0.15)
     parser.add_argument("--bidirectional", type=bool, default=True)
 
     # optimizer

@@ -57,7 +57,7 @@ def predict(test_loader, model, device):
     for x in tqdm(test_loader):
         x = x.to(device)                        
         with torch.no_grad():                   
-            pred = model(x)
+            pred = model(x, [x.shape[1]])
             # print('x =', x.shape)
             # print('pred =', pred.shape)      
             # print(sum(pred[0]))
@@ -99,9 +99,9 @@ def parse_args() -> Namespace:
     parser.add_argument("--max_len", type=int, default=128)
 
     # model
-    parser.add_argument("--hidden_size", type=int, default=512)
-    parser.add_argument("--num_layers", type=int, default=1)
-    parser.add_argument("--dropout", type=float, default=0)
+    parser.add_argument("--hidden_size", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=3)
+    parser.add_argument("--dropout", type=float, default=0.15)
     parser.add_argument("--bidirectional", type=bool, default=True)
 
     # data loader
