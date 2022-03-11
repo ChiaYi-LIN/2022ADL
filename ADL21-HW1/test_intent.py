@@ -26,6 +26,7 @@ def main(args):
 
     data = pd.read_json(args.test_file)
     dataset = SeqClsDataset(x=data[['text']], vocab=vocab, label_mapping=intent2idx, max_len=args.max_len)
+
     # TODO: crecate DataLoader for test dataset
     test_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
@@ -39,7 +40,7 @@ def main(args):
         bidirectional=args.bidirectional,
         num_class=len(intent2idx)
         ).to(args.device)
-    model = nn.DataParallel(model)
+    # model = nn.DataParallel(model)
 
     # load weights into model
     model.load_state_dict(torch.load(args.ckpt_path))
@@ -56,7 +57,10 @@ def predict(test_loader, model, device):
     for x in tqdm(test_loader):
         x = x.to(device)                        
         with torch.no_grad():                   
-            pred = model(x)              
+            pred = model(x)
+            # print('x =', x.shape)
+            # print('pred =', pred.shape)      
+            # print(sum(pred[0]))
             preds.append(pred.detach().cpu())   
     preds = torch.cat(preds, dim=0).numpy()
     return preds
@@ -89,7 +93,7 @@ def parse_args() -> Namespace:
         help="Path to model checkpoint.",
         required=True
     )
-    parser.add_argument("--pred_file", type=Path, default="pred.intent.csv")
+    parser.add_argument("--pred_file", type=Path, default="pred_intent.csv")
 
     # data
     parser.add_argument("--max_len", type=int, default=128)
@@ -97,14 +101,14 @@ def parse_args() -> Namespace:
     # model
     parser.add_argument("--hidden_size", type=int, default=512)
     parser.add_argument("--num_layers", type=int, default=1)
-    parser.add_argument("--dropout", type=float, default=0.15)
+    parser.add_argument("--dropout", type=float, default=0)
     parser.add_argument("--bidirectional", type=bool, default=True)
 
     # data loader
-    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=1)
 
     parser.add_argument(
-        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
+        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
     )
     args = parser.parse_args()
     return args

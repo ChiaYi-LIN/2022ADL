@@ -18,7 +18,7 @@ from dataset import SeqClsDataset
 from utils import Vocab
 from model import SeqClassifier
 
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 TRAIN = "train"
 DEV = "eval"
@@ -38,12 +38,12 @@ def main(args):
     # fix random seed
     same_seeds(args.seed)
 
-    # vocab.pkl contains top 10000 fequently used words
+    # vocab.pkl contains top 10000 fequently used words, and it is for token2idx
     with open(args.cache_dir / "vocab.pkl", "rb") as f:
         vocab: Vocab = pickle.load(f)
     # print(vocab.token2idx.items())
 
-    # intent2idx.json contains the mapping from label to integer
+    # intent2idx.json is for intent2idx
     intent_idx_path = args.cache_dir / "intent2idx.json"
     intent2idx: Dict[str, int] = json.loads(intent_idx_path.read_text())
     
@@ -59,10 +59,12 @@ def main(args):
     # print(datasets['train'].x)
 
     # TODO: crecate DataLoader for train / dev datasets
-    train_loader = DataLoader(datasets[TRAIN], batch_size=args.batch_size, shuffle=True, pin_memory=True)
-    dev_loader = DataLoader(datasets[DEV], batch_size=args.batch_size, shuffle=False, pin_memory=True)
+    train_loader = DataLoader(datasets[TRAIN], batch_size=args.batch_size, shuffle=True, pin_memory=True, collate_fn=datasets[TRAIN].collate_fn)
+    dev_loader = DataLoader(datasets[DEV], batch_size=args.batch_size, shuffle=False, pin_memory=True, collate_fn=datasets[DEV].collate_fn)
 
     embeddings = torch.load(args.cache_dir / "embeddings.pt")
+    # print(embeddings.shape)
+
     # TODO: init model and move model to target device(cpu / gpu)
     model = SeqClassifier(
         embeddings=embeddings,
@@ -73,7 +75,7 @@ def main(args):
         num_class=len(intent2idx)
         ).to(args.device)
     # print(model)
-    model = nn.DataParallel(model)
+    # model = nn.DataParallel(model)
     
     trainer(train_loader, dev_loader, model, args)
 
@@ -81,7 +83,7 @@ def trainer(train_loader, valid_loader, model, args):
 
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = torch.optim.Adam(model.parameters()) 
-    writer = SummaryWriter() # Writer of tensoboard.
+    # writer = SummaryWriter() # Writer of tensoboard.
 
     if not os.path.isdir(args.ckpt_dir):
         os.mkdir(args.ckpt_dir) # Create directory of saving models.
@@ -98,7 +100,9 @@ def trainer(train_loader, valid_loader, model, args):
         for x, y in train_pbar:
             optimizer.zero_grad()               # Set gradient to zero.
             x, y = x.to(args.device), y.to(args.device)   # Move your data to device. 
-            pred = model(x)             
+            pred = model(x)      
+            # print('pred =', pred.shape)       
+            # print('y =', y.shape)       
             loss = criterion(pred, y)
             loss.backward()                     # Compute gradient(backpropagation).
             optimizer.step()                    # Update parameters.
@@ -110,7 +114,7 @@ def trainer(train_loader, valid_loader, model, args):
             train_pbar.set_postfix({'loss': loss.detach().item()})
 
         mean_train_loss = sum(loss_record)/len(loss_record)
-        writer.add_scalar('Loss/train', mean_train_loss, step)
+        # writer.add_scalar('Loss/train', mean_train_loss, step)
 
         model.eval() # Set your model to evaluation mode.
         loss_record = []
@@ -124,7 +128,7 @@ def trainer(train_loader, valid_loader, model, args):
             
         mean_valid_loss = sum(loss_record)/len(loss_record)
         print(f'Epoch [{epoch+1}/{n_epochs}]: Train loss: {mean_train_loss:.4f}, Valid loss: {mean_valid_loss:.4f}')
-        writer.add_scalar('Loss/valid', mean_valid_loss, step)
+        # writer.add_scalar('Loss/valid', mean_valid_loss, step)
 
         if mean_valid_loss < best_loss:
             best_loss = mean_valid_loss
@@ -166,7 +170,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--seed", type=int, default=1121326)
     parser.add_argument("--hidden_size", type=int, default=512)
     parser.add_argument("--num_layers", type=int, default=1)
-    parser.add_argument("--dropout", type=float, default=0.15)
+    parser.add_argument("--dropout", type=float, default=0)
     parser.add_argument("--bidirectional", type=bool, default=True)
 
     # optimizer
@@ -181,7 +185,7 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
     )
-    parser.add_argument("--num_epoch", type=int, default=400)
+    parser.add_argument("--num_epoch", type=int, default=1000)
     parser.add_argument("--early_stop", type=float, default=100)
 
     args = parser.parse_args()
