@@ -3,6 +3,7 @@ from typing import Dict
 
 import torch
 import torch.nn as nn
+import torch.nn.utils.rnn as rnn
 from torch.nn import Embedding
 
 
@@ -41,7 +42,7 @@ class SeqClassifier(torch.nn.Module):
     #     # TODO: calculate the output dimension of rnn
     #     raise NotImplementedError
 
-    def forward(self, batch) -> Dict[str, torch.Tensor]:
+    def forward(self, batch, lengths):
         # TODO: implement model forward
         # raise NotImplementedError
         # print('batch =', batch.shape)
@@ -49,8 +50,13 @@ class SeqClassifier(torch.nn.Module):
         embeds = self.embed(batch) # embeds = torch.Size([batch size, seq length, embeddings])
         # print('embeds =', embeds.shape)
 
+        # pack sequence
+        pack_embeds = rnn.pack_padded_sequence(embeds, lengths, batch_first=True)
+
         # out, h = self.gru(embeds) # out = torch.Size([batch size, seq length, 2 * hid dim]), h = torch.Size([2 * num layers, batch size, hid dim])
-        out, (h, c) = self.lstm(embeds)
+        # out, (h, c) = self.lstm(embeds)
+
+        packed_out, (h, c) = self.lstm(pack_embeds)
         # print('out =', out.shape)
         # print('h =', h.shape)
 
@@ -103,14 +109,21 @@ class SeqIOBTagger(torch.nn.Module):
     #     # TODO: calculate the output dimension of rnn
     #     raise NotImplementedError
 
-    def forward(self, batch) -> Dict[str, torch.Tensor]:
+    def forward(self, batch, lengths=None):
         # TODO: implement model forward
         # raise NotImplementedError
         
         embeds = self.embed(batch) # embeds = torch.Size([batch size, seq length, embeddings])
 
+        # pack sequence
+        pack_embeds = rnn.pack_padded_sequence(embeds, lengths, batch_first=True)
+
         # out, h = self.gru(embeds) # out = torch.Size([batch size, seq length, 2 * hid dim]), h = torch.Size([2 * num layers, batch size, hid dim])
-        out, (h, c) = self.lstm(embeds)
+        # out, (h, c) = self.lstm(embeds)
+        
+        packed_out, (h, c) = self.lstm(pack_embeds)
+
+        out, _ = rnn.pad_packed_sequence(packed_out, batch_first=True)
 
         tag_space = self.fc(out) # tag_space = torch.Size([batch size, seq length, num_class])
         # print('tag_space = ', tag_space.shape)
