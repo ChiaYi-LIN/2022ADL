@@ -54,8 +54,8 @@ class SeqClsDataset(Dataset):
 
     def collate_fn(self, batch):
     # TODO: implement collate_fn
-        seq_vec, seq_label = zip(*[
-            (torch.LongTensor(vec), label)
+        seq_vec, seq_label, lengths = zip(*[
+            (torch.LongTensor(vec), label, len(vec))
             for (vec, label) in sorted(batch, key=lambda x: len(x[0]), reverse=True)
         ])
 
@@ -63,7 +63,7 @@ class SeqClsDataset(Dataset):
         # print(padded_seq_vec.shape)
         # print(torch.LongTensor(seq_label).shape)
 
-        return padded_seq_vec, torch.LongTensor(seq_label)
+        return padded_seq_vec, torch.LongTensor(seq_label), torch.LongTensor(lengths)
 
     def label2idx(self, label: str):
         return self.label_mapping[label]
@@ -123,8 +123,8 @@ class SeqIOBDataset(Dataset):
 
     def collate_fn(self, batch):
     # TODO: implement collate_fn
-        seq_vec, seq_label = zip(*[
-            (torch.LongTensor(vec), torch.LongTensor(labels))
+        seq_vec, seq_label, lengths = zip(*[
+            (torch.LongTensor(vec), torch.LongTensor(labels), len(vec))
             for (vec, labels) in sorted(batch, key=lambda x: len(x[0]), reverse=True)
         ])
 
@@ -134,7 +134,7 @@ class SeqIOBDataset(Dataset):
         padded_sequ_label = pad_sequence(seq_label, batch_first=True, padding_value=-100)
         # print('padded_sequ_label', padded_sequ_label.shape)
 
-        return padded_seq_vec, padded_sequ_label
+        return padded_seq_vec, padded_sequ_label, torch.LongTensor(lengths)
 
     def label2idx(self, label: str):
         return self.label_mapping[label]
