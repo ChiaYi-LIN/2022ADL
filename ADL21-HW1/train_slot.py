@@ -95,8 +95,9 @@ def main(args):
 
 def trainer(train_loader, valid_loader, model, args, weights, train_set, val_set):
 
-    criterion = nn.CrossEntropyLoss(weight=weights).to(args.device)
-    optimizer = torch.optim.Adam(model.parameters()) 
+    criterion = nn.CrossEntropyLoss().to(args.device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr) 
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size)
     # writer = SummaryWriter() # Writer of tensoboard.
 
     if not os.path.isdir(args.ckpt_dir):
@@ -186,6 +187,8 @@ def trainer(train_loader, valid_loader, model, args, weights, train_set, val_set
             print('\nModel is not improving, so we halt the training session.')
             return
 
+        # scheduler.step()
+
 def parse_args() -> Namespace:
     parser = ArgumentParser()
     parser.add_argument(
@@ -213,24 +216,27 @@ def parse_args() -> Namespace:
     # model
     parser.add_argument("--seed", type=int, default=1121326)
     parser.add_argument("--hidden_size", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=1)
-    parser.add_argument("--dropout", type=float, default=0)
+    parser.add_argument("--num_layers", type=int, default=10)
+    parser.add_argument("--dropout", type=float, default=0.35)
     parser.add_argument("--bidirectional", type=bool, default=True)
 
     # optimizer
-    # parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=1e-3)
     # parser.add_argument("--momentum", type=float, default=0.99)
     # parser.add_argument("--weight_decay", type=float, default=1e-5)
 
+    # scheduler
+    parser.add_argument("--step_size", type=float, default=30)
+
     # data loader
-    parser.add_argument("--batch_size", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=64)
 
     # training
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
     )
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--early_stop", type=float, default=100)
+    parser.add_argument("--num_epoch", type=int, default=100)
+    parser.add_argument("--early_stop", type=float, default=20)
 
     args = parser.parse_args()
     return args
