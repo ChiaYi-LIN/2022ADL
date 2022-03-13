@@ -6,3 +6,4 @@ spacy==3.2.2
 seqeval==1.2.2
 tqdm
 pandas==1.4.1
+setuptools==59.5.0
