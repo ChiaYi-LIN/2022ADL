@@ -1,0 +1,1 @@
+zip adl_hw1_r10922124.zip Makefile environment.yml requirements.in requirements.txt ./cache/intent/* ./cache/slot/* ./data/intent/* ./data/slot/* utils.py dataset.py model.py train_intent.py test_intent.py ./ckpt/intent/model.ckpt intent_cls.sh train_slot.py test_slot.py ./ckpt/slot/model.ckpt slot_cli.sh README.md
