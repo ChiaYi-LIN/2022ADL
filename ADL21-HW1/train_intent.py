@@ -121,7 +121,7 @@ def trainer(train_loader, valid_loader, model, args, train_set, val_set):
             train_pbar.set_description(f'Epoch [{epoch+1}/{n_epochs}]')
             train_pbar.set_postfix({'loss': loss.detach().item()})
 
-        # writer.add_scalar('Loss/train', mean_train_loss, step)
+        # writer.add_scalar('Loss/train', train_loss/len(train_loader), step)
 
         model.eval() # Set your model to evaluation mode.
         with torch.no_grad():
@@ -139,7 +139,7 @@ def trainer(train_loader, valid_loader, model, args, train_set, val_set):
             epoch + 1, n_epochs, train_acc/len(train_set), train_loss/len(train_loader), val_acc/len(val_set), val_loss/len(valid_loader)
         ))
         
-        # writer.add_scalar('Loss/valid', mean_valid_loss, step)
+        # writer.add_scalar('Loss/valid', val_loss/len(valid_loader), step)
 
         if val_acc > best_acc:
             best_acc = val_acc
