@@ -114,7 +114,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--batch_size", type=int, default=1)
 
     parser.add_argument(
-        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
+        "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cuda"
     )
     args = parser.parse_args()
     return args
