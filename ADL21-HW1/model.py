@@ -6,6 +6,19 @@ import torch.nn as nn
 import torch.nn.utils.rnn as rnn
 from torch.nn import Embedding
 
+class BasicBlock(nn.Module):
+    def __init__(self, input_dim, output_dim, dropout):
+        super(BasicBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Linear(input_dim, output_dim),
+            # nn.BatchNorm1d(output_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x):
+        x = self.block(x)
+        return x
 
 class SeqClassifier(torch.nn.Module):
     def __init__(
@@ -85,22 +98,30 @@ class SeqIOBTagger(torch.nn.Module):
         # TODO: model architecture
         self.gru = nn.GRU(input_size=embeddings.shape[1],
                             hidden_size=hidden_size,
-                            num_layers=num_layers,
+                            num_layers=1,
                             batch_first=True,
-                            dropout=dropout,
+                            dropout=0,
                             bidirectional=bidirectional)
 
         self.lstm = nn.LSTM(input_size=embeddings.shape[1],
                             hidden_size=hidden_size,
-                            num_layers=num_layers,
+                            num_layers=1,
                             batch_first=True,
-                            dropout=dropout,
+                            dropout=0,
                             bidirectional=bidirectional)
         
         if self.bidirectional:
-            self.fc = nn.Linear(2 * hidden_size, num_class)
+            # self.fc = nn.Linear(2 * hidden_size, num_class)
+            self.fc = nn.Sequential(
+                *[BasicBlock(2 * hidden_size, 2 * hidden_size, dropout) for _ in range(num_layers)],
+                nn.Linear(2 * hidden_size, num_class)
+            )
         else:
-            self.fc = nn.Linear(hidden_size, num_class)
+            # self.fc = nn.Linear(hidden_size, num_class)
+            self.fc = nn.Sequential(
+                *[BasicBlock(hidden_size, hidden_size, dropout) for _ in range(num_layers)],
+                nn.Linear(hidden_size, num_class)
+            )
 
     # @property
     # def encoder_output_size(self) -> int:
