@@ -151,7 +151,7 @@ def parse_args() -> Namespace:
         "--ckpt_path",
         type=Path,
         help="Path to model checkpoint.",
-        default="./ckpt/slot/Q4_eval_model.ckpt",
+        default="./ckpt/slot/model.ckpt",
     )
 
     # data
