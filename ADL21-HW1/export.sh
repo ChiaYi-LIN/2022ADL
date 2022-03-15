@@ -1,4 +1,7 @@
+# Create Directory
 mkdir -p ./r10922124
+
+# Add Mandatory Files
 cp ./intent_cls.sh ./r10922124/
 cp ./slot_tag.sh ./r10922124/
 cp ./README.md ./r10922124/
@@ -30,7 +33,12 @@ cp ./intent_Q5.py ./r10922124/
 cp ./model_Q5.py ./r10922124/
 
 # For Download
+rm -f adl_hw1_r10922124.zip
 zip adl_hw1_r10922124.zip ./cache/intent/* ./cache/slot/* ./data/intent/* ./data/slot/* ./ckpt/intent/model.ckpt ./ckpt/slot/model.ckpt
 
 # For NTUCool Submit 
+rm -f r10922124_submit_hw1.zip
 zip -r r10922124_submit_hw1.zip ./r10922124
+
+# Clean Directory
+rm -r ./r10922124
