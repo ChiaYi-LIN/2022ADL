@@ -122,6 +122,7 @@ def trainer(train_loader, valid_loader, model, args, train_set, val_set):
             train_pbar.set_postfix({'loss': loss.detach().item()})
 
         writer.add_scalar('Loss/train', train_loss/len(train_loader), step)
+        writer.add_scalar('Accuracy/train', train_acc/len(train_set), step)
 
         model.eval() # Set your model to evaluation mode.
         with torch.no_grad():
@@ -134,13 +135,14 @@ def trainer(train_loader, valid_loader, model, args, train_set, val_set):
                 _, val_pred = torch.max(pred, 1) 
                 val_acc += (val_pred.cpu() == y.cpu()).sum().item() # get the index of the class with the highest probability
                 val_loss += loss.item()
-            
+        
+        writer.add_scalar('Loss/valid', val_loss/len(valid_loader), step)
+        writer.add_scalar('Accuracy/valid', val_acc/len(val_set), step)
+
         print('[{:03d}/{:03d}] Train Acc: {:3.6f} Loss: {:3.6f} | Val Acc: {:3.6f} loss: {:3.6f}'.format(
             epoch + 1, n_epochs, train_acc/len(train_set), train_loss/len(train_loader), val_acc/len(val_set), val_loss/len(valid_loader)
         ))
         
-        writer.add_scalar('Loss/valid', val_loss/len(valid_loader), step)
-
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), args.ckpt_dir / "model.ckpt") # Save your best model
