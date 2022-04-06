@@ -1,17 +1,17 @@
 #%%
 """## Import Packages"""
+import os
+import random
 import json
 import numpy as np
 import pandas as pd
-import random
 from datasets import Dataset
 import torch
-from torch.utils.data import DataLoader 
-from transformers import AdamW, BertForMultipleChoice, BertTokenizerFast
 
-from tqdm.auto import tqdm
 
+output_name = "base"
 device = "cuda" if torch.cuda.is_available() else "cpu"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 # Fix random seed for reproducibility
 set_seed = 0
@@ -71,12 +71,12 @@ test_dataset = Dataset.from_pandas(pd.DataFrame(data=unfold_test_questions))
 
 #%%
 """## Load Tokenizer"""
-from transformers import BertTokenizerFast
-tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
 
 #%%
 """## Preprocess & Tokenize Data"""
-def preprocess_function(examples):
+def CS_preprocess_function(examples):
 	first_sentences = [[question] * 4 for question in examples["question"]]
 	ending_names = ["context0", "context1", "context2", "context3"]
 	second_sentences = [
@@ -85,19 +85,28 @@ def preprocess_function(examples):
 	first_sentences = sum(first_sentences, [])
 	second_sentences = sum(second_sentences, [])
 	
-	tokenized_examples = tokenizer(first_sentences, second_sentences, padding=True, truncation=True, return_tensors="pt")
+	tokenized_examples = tokenizer(
+        first_sentences, 
+        second_sentences, 
+        padding=True, 
+        truncation=True, 
+        return_tensors="pt"
+    )
 	output = {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
 	return output
 
-tokenized_train_dataset = train_dataset.map(preprocess_function, batched=True)
-tokenized_valid_dataset = valid_dataset.map(preprocess_function, batched=True)
-tokenized_test_dataset = test_dataset.map(preprocess_function, batched=True)
+tokenized_train_dataset = train_dataset.map(CS_preprocess_function, batched=True)
+tokenized_valid_dataset = valid_dataset.map(CS_preprocess_function, batched=True)
+tokenized_test_dataset = test_dataset.map(CS_preprocess_function, batched=True)
 
 #%%
 for k, v in tokenized_train_dataset[0].items() :
     print (k)
 
 #%%
+"""## Load Data Collator"""
+from transformers import DefaultDataCollator
+data_collator = DefaultDataCollator()
 # from dataclasses import dataclass
 # from transformers.tokenization_utils_base import PreTrainedTokenizerBase, PaddingStrategy
 # from typing import Optional, Union
@@ -138,6 +147,7 @@ for k, v in tokenized_train_dataset[0].items() :
 
 #%%
 """## Load Model"""
+from transformers import BertForMultipleChoice
 model = BertForMultipleChoice.from_pretrained("bert-base-chinese")
 
 #%%
@@ -146,15 +156,15 @@ from transformers import TrainingArguments, Trainer
 
 training_args = TrainingArguments(
     seed=set_seed,
-    output_dir="./results",
+    output_dir=f"./results/{output_name}/CS",
     evaluation_strategy="epoch",
-    learning_rate=5e-5,
+    learning_rate=3e-5,
     per_device_train_batch_size=2,
     per_device_eval_batch_size=2,
     num_train_epochs=1,
     # warmup_steps=500,
     weight_decay=0.01,
-    logging_dir="./logs",
+    logging_dir=f"./logs/{output_name}/CS",
     label_names=["label"],
 )
 
@@ -163,15 +173,15 @@ trainer = Trainer(
     args=training_args,
     train_dataset=tokenized_train_dataset,
     eval_dataset=tokenized_valid_dataset,
-    # tokenizer=tokenizer,
-    # data_collator=DataCollatorForMultipleChoice(tokenizer=tokenizer),
+    tokenizer=tokenizer,
+    data_collator=data_collator,
 )
 
 trainer.train()
 
 #%%
 """## Save Model"""
-trainer.save_model('./model/context_select')
+trainer.save_model(f'./model/{output_name}/CS')
 
 #%%
 """## Make Predictions"""
@@ -189,9 +199,19 @@ CS_test_dataset['label'] = predict_labels
 CS_test_dataset['relevant'] = CS_test_dataset.apply(get_relevant, axis=1)
 
 #%%
-# import json
-# with open('./data/cs_test.json', 'w') as fp:
+"""## Save/Load Context-Selected Test Data"""
+import json
+from pathlib import Path
+
+# Save
+# Path(f"./data/{output_name}").mkdir(parents=True, exist_ok=True)
+# with open(f'./data/{output_name}/cs_test.json', 'w') as fp:
 #     json.dump(CS_test_dataset.to_dict('records'), fp, ensure_ascii=False)
+
+# Load
+with open(f'./data/{output_name}/cs_test.json') as f:
+    CS_test_dataset = json.load(f)
+CS_test_dataset[0]
 
 #%%
 """## Prepare Dataset for QA"""
@@ -213,45 +233,141 @@ QA_valid_dataset = QA_valid_dataset[['id', 'question', 'context', 'answer']]
 QA_test_dataset = QA_test_dataset[['id', 'question', 'context']]
 
 #%%
-"""## To Dataset"""
+"""## QA data To Dataset"""
 QA_train_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_train_dataset))
 QA_valid_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_valid_dataset))
 QA_test_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_test_dataset))
 QA_train_dataset[0]
 
 #%%
-from transformers import BertTokenizerFast
-tokenizer = BertTokenizerFast.from_pretrained("bert-base-chinese")
-
-
+"""## Load Tokenizer"""
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
 
 #%%
+"""## Preprocess & Tokenize Data"""
+max_length = 384
+stride = 128
+def QA_preprocess_function(examples):
+    questions = [q.strip() for q in examples["question"]]
+    inputs = tokenizer(
+        questions,
+        examples["context"],
+        max_length=max_length,
+        truncation="only_second",
+        stride=stride,
+        return_overflowing_tokens=True,
+        return_offsets_mapping=True,
+        padding="max_length",
+    )
+
+    offset_mapping = inputs.pop("offset_mapping")
+    sample_map = inputs.pop("overflow_to_sample_mapping")
+    answers = examples["answer"]
+    start_positions = []
+    end_positions = []
+
+    for i, offset in enumerate(offset_mapping):
+        sample_idx = sample_map[i]
+        answer = answers[sample_idx]
+        start_char = answer["start"]
+        end_char = answer["start"] + len(answer["text"])
+        sequence_ids = inputs.sequence_ids(i)
+
+        # Find the start and end of the context
+        idx = 0
+        while sequence_ids[idx] != 1:
+            idx += 1
+        context_start = idx
+        while sequence_ids[idx] == 1:
+            idx += 1
+        context_end = idx - 1
+
+        # If the answer is not fully inside the context, label is (0, 0)
+        if offset[context_start][0] > start_char or offset[context_end][1] < end_char:
+            start_positions.append(0)
+            end_positions.append(0)
+        else:
+            # Otherwise it's the start and end token positions
+            idx = context_start
+            while idx <= context_end and offset[idx][0] <= start_char:
+                idx += 1
+            start_positions.append(idx - 1)
+
+            idx = context_end
+            while idx >= context_start and offset[idx][1] >= end_char:
+                idx -= 1
+            end_positions.append(idx + 1)
+
+    inputs["start_positions"] = start_positions
+    inputs["end_positions"] = end_positions
+    return inputs
+
+#%%
+tokenized_QA_train_dataset = QA_train_dataset.map(QA_preprocess_function, batched=True, remove_columns=QA_train_dataset.column_names)
+tokenized_QA_valid_dataset = QA_valid_dataset.map(QA_preprocess_function, batched=True, remove_columns=QA_valid_dataset.column_names)
+
+#%%
+for k, v in tokenized_QA_train_dataset[0].items() :
+    print (k)
+
+#%%
+"""## Load Data Collator"""
+from transformers import DefaultDataCollator
+data_collator = DefaultDataCollator()
+
+#%%
+"""## Load QA Model"""
 from transformers import BertForQuestionAnswering
 model = BertForQuestionAnswering.from_pretrained("bert-base-chinese")
 
 #%%
-# """## Dataset and Dataloader"""
-# class CS_Dataset(Dataset):
-# 	def __init__(self, split, questions, tokenized_questions, tokenized_paragraphs):
-# 		self.split = split # train, valid, test
-# 		self.questions = questions
-# 		self.tokenized_questions = tokenized_questions
-# 		self.tokenized_paragraphs = tokenized_paragraphs
-# 		self.max_question_len = 512
-# 		self.max_paragraph_len = 512
-		
-# 		##### TODO: Change value of doc_stride #####
-# 		self.doc_stride = 150
+"""## Training"""
+from transformers import TrainingArguments, Trainer
 
-# 		# Input sequence length = [CLS] + question + [SEP] + paragraph + [SEP]
-# 		self.max_seq_len = 1 + self.max_question_len + 1 + self.max_paragraph_len + 1
+training_args = TrainingArguments(
+    seed=set_seed,
+    output_dir=f"./results/{output_name}/QA",
+    evaluation_strategy="epoch",
+    learning_rate=3e-5,
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,
+    num_train_epochs=1,
+    # warmup_steps=500,
+    weight_decay=0.01,
+    logging_dir=f"./logs/{output_name}/QA",
+    label_names=["start_positions", "end_positions"],
+)
 
-# 	def __len__(self):
-# 		return len(self.questions)
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_QA_train_dataset,
+    eval_dataset=tokenized_QA_valid_dataset,
+    tokenizer=tokenizer,
+    data_collator=data_collator,
+)
 
-# 	def __getitem__(self, idx):
-# 		question = self.questions[idx]
-# 		tokenized_question = self.tokenized_questions[idx]
-# 		tokenized_paragraph = self.tokenized_paragraphs[question["paragraphs"]]
+trainer.train()
 
-		
+#%%
+"""## Save QA Model"""
+trainer.save_model(f'./model/{output_name}/QA')
+
+#%%
+"""## Load Answerer"""
+from transformers import QuestionAnsweringPipeline
+question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, device=0)
+
+#%%
+"""## Answer questions"""
+predictions = question_answerer(question=QA_test_dataset['question'], context=QA_test_dataset['context'])
+
+#%%
+"""## Generate output file"""
+predictions_df = pd.DataFrame(predictions)
+answer_test_dataset = pd.DataFrame(QA_test_dataset)
+answer_test_dataset['answer'] = predictions_df['answer']
+answer_test_dataset[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
+
+#%%
