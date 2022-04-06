@@ -4,3 +4,8 @@ cache/
 __pycache__
 glove.840B.300d.txt
 runs/
+*.json
+datasets/
+model/
+logs/
+results/
