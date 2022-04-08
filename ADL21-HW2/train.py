@@ -7,31 +7,48 @@ import numpy as np
 import pandas as pd
 from datasets import Dataset
 import torch
+from transformers import (
+    BertTokenizerFast, 
+    BertForMultipleChoice, 
+    BertForQuestionAnswering, 
+    QuestionAnsweringPipeline,
+    DefaultDataCollator,
+    TrainingArguments, 
+    Trainer, 
+)
 
+output_name = "bert"
+# bert-base-chinese
+# hfl/chinese-bert-wwm-ext
+checkpoint = "bert-base-chinese"
+batch_size = 2
+num_epoch = 1
+set_seed = 0
+max_length = 384
+stride = 50
 
-output_name = "base"
+#%%
 device = "cuda" if torch.cuda.is_available() else "cpu"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 # Fix random seed for reproducibility
-set_seed = 0
 def same_seeds(seed):
-	torch.manual_seed(seed)
-	if torch.cuda.is_available():
-		torch.cuda.manual_seed(seed)
-		torch.cuda.manual_seed_all(seed)
-	np.random.seed(seed)
-	random.seed(seed)
-	torch.backends.cudnn.benchmark = False
-	torch.backends.cudnn.deterministic = True
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 same_seeds(set_seed)
 
 #%%
 """## Read Data"""
 def read_data(file):
-	with open(file, 'r', encoding="utf-8") as reader:
-		data = json.load(reader)
-	return data
+    with open(file, 'r', encoding="utf-8") as reader:
+        data = json.load(reader)
+    return data
 
 context = read_data("./data/context.json")
 train_questions = read_data("./data/train.json")
@@ -42,22 +59,22 @@ train_questions[0]
 #%%
 """## Paragraph ID to Context"""
 def unfold_questions(mode, questions):
-	for question in questions:
-		paragraphs = question['paragraphs']
+    for question in questions:
+        paragraphs = question['paragraphs']
 
-		if mode != 'test':
-			relevant = question['relevant']
-			# label key
-			label = paragraphs.index(relevant)
-			question['label'] = label
+        if mode != 'test':
+            relevant = question['relevant']
+            # label key
+            label = paragraphs.index(relevant)
+            question['label'] = label
 
-		# context key
-		for i in range(4):
-			paragraph_id = paragraphs[i]
-			paragraph = context[paragraph_id]
-			question[f'context{i}'] = paragraph
+        # context key
+        for i in range(4):
+            paragraph_id = paragraphs[i]
+            paragraph = context[paragraph_id]
+            question[f'context{i}'] = paragraph
 
-	return questions
+    return questions
 
 unfold_train_questions = unfold_questions('train', train_questions)
 unfold_valid_questions = unfold_questions('valid', valid_questions)
@@ -70,101 +87,71 @@ valid_dataset = Dataset.from_pandas(pd.DataFrame(data=unfold_valid_questions))
 test_dataset = Dataset.from_pandas(pd.DataFrame(data=unfold_test_questions))
 
 #%%
+"""
+# Context Selection
+"""
+
+#%%
 """## Load Tokenizer"""
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
+from transformers import BertTokenizerFast
+tokenizer = BertTokenizerFast.from_pretrained(checkpoint)
 
 #%%
 """## Preprocess & Tokenize Data"""
 def CS_preprocess_function(examples):
-	first_sentences = [[question] * 4 for question in examples["question"]]
-	ending_names = ["context0", "context1", "context2", "context3"]
-	second_sentences = [
-		[f"{examples[end][i]}" for end in ending_names] for i, _ in enumerate(examples["question"])
-	]
-	first_sentences = sum(first_sentences, [])
-	second_sentences = sum(second_sentences, [])
-	
-	tokenized_examples = tokenizer(
+    first_sentences = [[question] * 4 for question in examples["question"]]
+    ending_names = ["context0", "context1", "context2", "context3"]
+    second_sentences = [
+        [examples[end][i] for end in ending_names] for i, _ in enumerate(examples["question"])
+    ]
+    first_sentences = sum(first_sentences, [])
+    second_sentences = sum(second_sentences, [])
+    
+    tokenized_examples = tokenizer(
         first_sentences, 
         second_sentences, 
         padding=True, 
-        truncation=True, 
-        return_tensors="pt"
+        truncation=True,
+        max_length=max_length,
+        return_tensors="pt",
     )
-	output = {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
-	return output
+    output = {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
+    return output
 
 tokenized_train_dataset = train_dataset.map(CS_preprocess_function, batched=True)
 tokenized_valid_dataset = valid_dataset.map(CS_preprocess_function, batched=True)
 tokenized_test_dataset = test_dataset.map(CS_preprocess_function, batched=True)
 
 #%%
-for k, v in tokenized_train_dataset[0].items() :
+# print(tokenized_train_dataset.features)
+for k, v in tokenized_train_dataset[0].items():
     print (k)
 
 #%%
 """## Load Data Collator"""
 from transformers import DefaultDataCollator
 data_collator = DefaultDataCollator()
-# from dataclasses import dataclass
-# from transformers.tokenization_utils_base import PreTrainedTokenizerBase, PaddingStrategy
-# from typing import Optional, Union
-# import torch
-
-# @dataclass
-# class DataCollatorForMultipleChoice:
-#     """
-#     Data collator that will dynamically pad the inputs for multiple choice received.
-#     """
-
-#     tokenizer: PreTrainedTokenizerBase
-#     padding: Union[bool, str, PaddingStrategy] = True
-#     max_length: Optional[int] = None
-#     pad_to_multiple_of: Optional[int] = None
-
-#     def __call__(self, features):
-#         label_name = "label" if "label" in features[0].keys() else "labels"
-#         labels = [feature.pop(label_name) for feature in features]
-#         batch_size = len(features)
-#         num_choices = len(features[0]["input_ids"])
-#         flattened_features = [
-#             [{k: v[i] for k, v in feature.items()} for i in range(num_choices)] for feature in features
-#         ]
-#         flattened_features = sum(flattened_features, [])
-
-#         batch = self.tokenizer.pad(
-#             flattened_features,
-#             padding=self.padding,
-#             max_length=self.max_length,
-#             pad_to_multiple_of=self.pad_to_multiple_of,
-#             return_tensors="pt",
-#         )
-
-#         batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
-#         batch["labels"] = torch.tensor(labels, dtype=torch.int64)
-#         return batch
 
 #%%
 """## Load Model"""
 from transformers import BertForMultipleChoice
-model = BertForMultipleChoice.from_pretrained("bert-base-chinese")
+model = BertForMultipleChoice.from_pretrained(checkpoint)
 
 #%%
-"""## Training"""
+"""## Trainer"""
 from transformers import TrainingArguments, Trainer
 
 training_args = TrainingArguments(
     seed=set_seed,
     output_dir=f"./results/{output_name}/CS",
+    overwrite_output_dir=True,
     evaluation_strategy="epoch",
     learning_rate=3e-5,
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    num_train_epochs=1,
+    per_device_train_batch_size=batch_size,
+    per_device_eval_batch_size=batch_size,
+    num_train_epochs=num_epoch,
     # warmup_steps=500,
     weight_decay=0.01,
-    logging_dir=f"./logs/{output_name}/CS",
     label_names=["label"],
 )
 
@@ -177,6 +164,8 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
+#%%
+"""## Training"""
 trainer.train()
 
 #%%
@@ -199,16 +188,22 @@ CS_test_dataset['label'] = predict_labels
 CS_test_dataset['relevant'] = CS_test_dataset.apply(get_relevant, axis=1)
 
 #%%
-"""## Save/Load Context-Selected Test Data"""
+"""## Save Context-Selected Test Data"""
 import json
 from pathlib import Path
 
-# Save
-# Path(f"./data/{output_name}").mkdir(parents=True, exist_ok=True)
-# with open(f'./data/{output_name}/cs_test.json', 'w') as fp:
-#     json.dump(CS_test_dataset.to_dict('records'), fp, ensure_ascii=False)
+Path(f"./data/{output_name}").mkdir(parents=True, exist_ok=True)
+with open(f'./data/{output_name}/cs_test.json', 'w') as fp:
+    json.dump(CS_test_dataset.to_dict('records'), fp, ensure_ascii=False)
 
-# Load
+#%%
+"""
+# Question Answering
+"""
+#%%
+"""## Load Context-Selected Test Data"""
+import json
+
 with open(f'./data/{output_name}/cs_test.json') as f:
     CS_test_dataset = json.load(f)
 CS_test_dataset[0]
@@ -228,8 +223,17 @@ QA_valid_dataset["context"] = QA_valid_dataset.apply(get_context, axis=1)
 QA_test_dataset["context"] = QA_test_dataset.apply(get_context, axis=1)
 
 #%%
-QA_train_dataset = QA_train_dataset[['id', 'question', 'context', 'answer']]
-QA_valid_dataset = QA_valid_dataset[['id', 'question', 'context', 'answer']]
+"""## Squad answers format"""
+def to_squad_answers_format(x):
+    return {'answer_start': [x['answer']['start']], 'text':[x['answer']['text']]}
+
+QA_train_dataset['answers'] = QA_train_dataset.apply(to_squad_answers_format, axis=1)
+QA_valid_dataset['answers'] = QA_valid_dataset.apply(to_squad_answers_format, axis=1)
+
+#%%
+"""## Keep needed columns only"""
+QA_train_dataset = QA_train_dataset[['id', 'question', 'context', 'answers']]
+QA_valid_dataset = QA_valid_dataset[['id', 'question', 'context', 'answers']]
 QA_test_dataset = QA_test_dataset[['id', 'question', 'context']]
 
 #%%
@@ -241,13 +245,11 @@ QA_train_dataset[0]
 
 #%%
 """## Load Tokenizer"""
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
+from transformers import BertTokenizerFast
+tokenizer = BertTokenizerFast.from_pretrained(checkpoint)
 
 #%%
 """## Preprocess & Tokenize Data"""
-max_length = 384
-stride = 128
 def QA_preprocess_function(examples):
     questions = [q.strip() for q in examples["question"]]
     inputs = tokenizer(
@@ -261,17 +263,19 @@ def QA_preprocess_function(examples):
         padding="max_length",
     )
 
-    offset_mapping = inputs.pop("offset_mapping")
+    offset_mapping = inputs["offset_mapping"]
     sample_map = inputs.pop("overflow_to_sample_mapping")
-    answers = examples["answer"]
+    example_ids = []
+    answers = examples["answers"]
     start_positions = []
     end_positions = []
 
     for i, offset in enumerate(offset_mapping):
         sample_idx = sample_map[i]
+        example_ids.append(examples["id"][sample_idx])
         answer = answers[sample_idx]
-        start_char = answer["start"]
-        end_char = answer["start"] + len(answer["text"])
+        start_char = answer["answer_start"][0]
+        end_char = answer["answer_start"][0] + len(answer["text"][0])
         sequence_ids = inputs.sequence_ids(i)
 
         # Find the start and end of the context
@@ -298,12 +302,12 @@ def QA_preprocess_function(examples):
             while idx >= context_start and offset[idx][1] >= end_char:
                 idx -= 1
             end_positions.append(idx + 1)
-
+        
+    inputs["example_id"] = example_ids
     inputs["start_positions"] = start_positions
     inputs["end_positions"] = end_positions
     return inputs
 
-#%%
 tokenized_QA_train_dataset = QA_train_dataset.map(QA_preprocess_function, batched=True, remove_columns=QA_train_dataset.column_names)
 tokenized_QA_valid_dataset = QA_valid_dataset.map(QA_preprocess_function, batched=True, remove_columns=QA_valid_dataset.column_names)
 
@@ -319,35 +323,75 @@ data_collator = DefaultDataCollator()
 #%%
 """## Load QA Model"""
 from transformers import BertForQuestionAnswering
-model = BertForQuestionAnswering.from_pretrained("bert-base-chinese")
+model = BertForQuestionAnswering.from_pretrained(checkpoint)
 
 #%%
-"""## Training"""
+# Post-processing:
+from transformers import EvalPrediction
+from utils_qa import postprocess_qa_predictions
+from datasets import load_metric
+
+n_best = 20
+max_answer_length = 50
+metric = load_metric("squad")
+
+def post_processing_function(examples, features, predictions, stage="eval"):
+    # Post-processing: we match the start logits and end logits to answers in the original context.
+    predictions = postprocess_qa_predictions(
+        examples=examples,
+        features=features,
+        predictions=predictions,
+        version_2_with_negative=False,
+        n_best_size=n_best,
+        max_answer_length=max_answer_length,
+        output_dir=training_args.output_dir,
+        prefix=stage,
+    )
+    # Format the result to the format the metric expects.
+    formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
+
+    references = [{"id": ex["id"], "answers": ex["answers"]} for ex in examples]
+    return EvalPrediction(predictions=formatted_predictions, label_ids=references)
+
+def compute_metrics(p: EvalPrediction):
+        return metric.compute(predictions=p.predictions, references=p.label_ids)
+
+#%%
+"""## Trainer"""
 from transformers import TrainingArguments, Trainer
+from trainer_qa import QuestionAnsweringTrainer
 
 training_args = TrainingArguments(
     seed=set_seed,
     output_dir=f"./results/{output_name}/QA",
-    evaluation_strategy="epoch",
+    overwrite_output_dir=True,
+    evaluation_strategy="steps",
     learning_rate=3e-5,
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    num_train_epochs=1,
+    per_device_train_batch_size=batch_size,
+    per_device_eval_batch_size=batch_size,
+    num_train_epochs=num_epoch,
     # warmup_steps=500,
     weight_decay=0.01,
-    logging_dir=f"./logs/{output_name}/QA",
+    # logging_dir=f"./logs/{output_name}/QA",
+    logging_steps=1500,
+    save_steps=1500,
     label_names=["start_positions", "end_positions"],
 )
 
-trainer = Trainer(
+trainer = QuestionAnsweringTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_QA_train_dataset,
     eval_dataset=tokenized_QA_valid_dataset,
+    eval_examples=QA_valid_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
+    post_process_function=post_processing_function,
+    compute_metrics=compute_metrics,
 )
 
+#%%
+"""## Training"""
 trainer.train()
 
 #%%
