@@ -22,6 +22,7 @@ output_name = "bert_stride128_em"
 # hfl/chinese-bert-wwm-ext
 tokenizer_checkpoint = "bert-base-chinese"
 CS_model_checkpoint = "bert-base-chinese"
+QA_model_checkpoint = "bert-base-chinese"
 batch_size = 1
 gradient_accumulation_steps = 2
 num_epoch = 1
@@ -143,6 +144,11 @@ model = AutoModelForMultipleChoice.from_pretrained(CS_model_checkpoint).to(devic
 from datasets import load_metric
 metric_acc = load_metric("accuracy")
 
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    predictions = np.argmax(logits, axis=-1)
+    return metric_acc.compute(predictions=predictions, references=labels)
+
 #%%
 """## Trainer"""
 from transformers import TrainingArguments, Trainer
@@ -154,12 +160,14 @@ training_args = TrainingArguments(
     evaluation_strategy="steps",
     per_device_train_batch_size=batch_size,
     gradient_accumulation_steps=gradient_accumulation_steps,
-    # gradient_checkpointing=True,
+    gradient_checkpointing=True,
     fp16=True,
     per_device_eval_batch_size=batch_size,
+    optim='adamw_torch',
     learning_rate=3e-5,
     weight_decay=0.01,
     num_train_epochs=num_epoch,
+    # max_steps=5,
     warmup_steps=500,
     logging_steps=1000,
     save_steps=1000,
@@ -175,7 +183,7 @@ trainer = Trainer(
     eval_dataset=tokenized_valid_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
-    compute_metrics=metric_acc,
+    compute_metrics=compute_metrics,
 )
 
 #%%
@@ -336,7 +344,7 @@ data_collator = DefaultDataCollator()
 #%%
 """## Load QA Model"""
 from transformers import AutoModelForQuestionAnswering
-model = AutoModelForQuestionAnswering.from_pretrained(checkpoint).to(device)
+model = AutoModelForQuestionAnswering.from_pretrained(QA_model_checkpoint).to(device)
 
 #%%
 # Post-processing:
@@ -384,9 +392,11 @@ training_args = TrainingArguments(
     gradient_checkpointing=True,
     fp16=True,
     per_device_eval_batch_size=batch_size,
+    optim='adamw_torch',
     learning_rate=3e-5,
     weight_decay=0.01,
     num_train_epochs=num_epoch,
+    # max_steps=5,
     warmup_steps=500,
     logging_steps=1000,
     save_steps=1000,
