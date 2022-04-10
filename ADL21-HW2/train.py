@@ -8,20 +8,22 @@ import pandas as pd
 from datasets import Dataset
 import torch
 from transformers import (
-    BertTokenizerFast, 
-    BertForMultipleChoice, 
-    BertForQuestionAnswering, 
+    AutoTokenizer, 
+    AutoModelForMultipleChoice, 
+    AutoModelForQuestionAnswering, 
     QuestionAnsweringPipeline,
     DefaultDataCollator,
     TrainingArguments, 
     Trainer, 
 )
 
-output_name = "bert"
+output_name = "bert_stride128_em"
 # bert-base-chinese
 # hfl/chinese-bert-wwm-ext
-checkpoint = "bert-base-chinese"
-batch_size = 2
+tokenizer_checkpoint = "bert-base-chinese"
+CS_model_checkpoint = "bert-base-chinese"
+batch_size = 1
+gradient_accumulation_steps = 2
 num_epoch = 1
 set_seed = 0
 max_length = 384
@@ -93,8 +95,8 @@ test_dataset = Dataset.from_pandas(pd.DataFrame(data=unfold_test_questions))
 
 #%%
 """## Load Tokenizer"""
-from transformers import BertTokenizerFast
-tokenizer = BertTokenizerFast.from_pretrained(checkpoint)
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
 
 #%%
 """## Preprocess & Tokenize Data"""
@@ -110,17 +112,17 @@ def CS_preprocess_function(examples):
     tokenized_examples = tokenizer(
         first_sentences, 
         second_sentences, 
-        padding=True, 
-        truncation=True,
+        padding="max_length", 
+        truncation="only_second",
         max_length=max_length,
         return_tensors="pt",
     )
     output = {k: [v[i : i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
     return output
 
-tokenized_train_dataset = train_dataset.map(CS_preprocess_function, batched=True)
-tokenized_valid_dataset = valid_dataset.map(CS_preprocess_function, batched=True)
-tokenized_test_dataset = test_dataset.map(CS_preprocess_function, batched=True)
+tokenized_train_dataset = train_dataset.map(CS_preprocess_function, batched=True, remove_columns=['id', 'question', 'context0', 'context1', 'context2', 'context3', 'paragraphs', 'relevant', 'answer'])
+tokenized_valid_dataset = valid_dataset.map(CS_preprocess_function, batched=True, remove_columns=['id', 'question', 'context0', 'context1', 'context2', 'context3', 'paragraphs', 'relevant', 'answer'])
+tokenized_test_dataset = test_dataset.map(CS_preprocess_function, batched=True, remove_columns=['id', 'question', 'context0', 'context1', 'context2', 'context3', 'paragraphs'])
 
 #%%
 # print(tokenized_train_dataset.features)
@@ -134,8 +136,12 @@ data_collator = DefaultDataCollator()
 
 #%%
 """## Load Model"""
-from transformers import BertForMultipleChoice
-model = BertForMultipleChoice.from_pretrained(checkpoint)
+from transformers import AutoModelForMultipleChoice
+model = AutoModelForMultipleChoice.from_pretrained(CS_model_checkpoint).to(device)
+
+#%%
+from datasets import load_metric
+metric_acc = load_metric("accuracy")
 
 #%%
 """## Trainer"""
@@ -145,13 +151,20 @@ training_args = TrainingArguments(
     seed=set_seed,
     output_dir=f"./results/{output_name}/CS",
     overwrite_output_dir=True,
-    evaluation_strategy="epoch",
-    learning_rate=3e-5,
+    evaluation_strategy="steps",
     per_device_train_batch_size=batch_size,
+    gradient_accumulation_steps=gradient_accumulation_steps,
+    # gradient_checkpointing=True,
+    fp16=True,
     per_device_eval_batch_size=batch_size,
-    num_train_epochs=num_epoch,
-    # warmup_steps=500,
+    learning_rate=3e-5,
     weight_decay=0.01,
+    num_train_epochs=num_epoch,
+    warmup_steps=500,
+    logging_steps=1000,
+    save_steps=1000,
+    load_best_model_at_end =True,
+    metric_for_best_model='accuracy',
     label_names=["label"],
 )
 
@@ -162,6 +175,7 @@ trainer = Trainer(
     eval_dataset=tokenized_valid_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
+    compute_metrics=metric_acc,
 )
 
 #%%
@@ -241,12 +255,11 @@ QA_test_dataset = QA_test_dataset[['id', 'question', 'context']]
 QA_train_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_train_dataset))
 QA_valid_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_valid_dataset))
 QA_test_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_test_dataset))
-QA_train_dataset[0]
 
 #%%
 """## Load Tokenizer"""
-from transformers import BertTokenizerFast
-tokenizer = BertTokenizerFast.from_pretrained(checkpoint)
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
 
 #%%
 """## Preprocess & Tokenize Data"""
@@ -322,8 +335,8 @@ data_collator = DefaultDataCollator()
 
 #%%
 """## Load QA Model"""
-from transformers import BertForQuestionAnswering
-model = BertForQuestionAnswering.from_pretrained(checkpoint)
+from transformers import AutoModelForQuestionAnswering
+model = AutoModelForQuestionAnswering.from_pretrained(checkpoint).to(device)
 
 #%%
 # Post-processing:
@@ -354,7 +367,7 @@ def post_processing_function(examples, features, predictions, stage="eval"):
     return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
 def compute_metrics(p: EvalPrediction):
-        return metric.compute(predictions=p.predictions, references=p.label_ids)
+    return metric.compute(predictions=p.predictions, references=p.label_ids)
 
 #%%
 """## Trainer"""
@@ -366,15 +379,19 @@ training_args = TrainingArguments(
     output_dir=f"./results/{output_name}/QA",
     overwrite_output_dir=True,
     evaluation_strategy="steps",
-    learning_rate=3e-5,
     per_device_train_batch_size=batch_size,
+    gradient_accumulation_steps=gradient_accumulation_steps,
+    gradient_checkpointing=True,
+    fp16=True,
     per_device_eval_batch_size=batch_size,
-    num_train_epochs=num_epoch,
-    # warmup_steps=500,
+    learning_rate=3e-5,
     weight_decay=0.01,
-    # logging_dir=f"./logs/{output_name}/QA",
-    logging_steps=1500,
-    save_steps=1500,
+    num_train_epochs=num_epoch,
+    warmup_steps=500,
+    logging_steps=1000,
+    save_steps=1000,
+    load_best_model_at_end=True,
+    metric_for_best_model="exact_match",
     label_names=["start_positions", "end_positions"],
 )
 
@@ -401,7 +418,7 @@ trainer.save_model(f'./model/{output_name}/QA')
 #%%
 """## Load Answerer"""
 from transformers import QuestionAnsweringPipeline
-question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, device=0)
+question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, args_parser=training_args, device=0)
 
 #%%
 """## Answer questions"""
