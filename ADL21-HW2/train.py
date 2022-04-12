@@ -1,6 +1,5 @@
 #%%
 """## Import Packages"""
-import os
 import random
 import json
 import numpy as np
@@ -11,28 +10,26 @@ from transformers import (
     AutoTokenizer, 
     AutoModelForMultipleChoice, 
     AutoModelForQuestionAnswering, 
-    QuestionAnsweringPipeline,
     DefaultDataCollator,
     TrainingArguments, 
     Trainer, 
 )
 
-output_name = "bert_correct"
+output_name = "roberta_wwm"
 # bert-base-chinese
-# hfl/chinese-bert-wwm-ext
-tokenizer_checkpoint = "bert-base-chinese"
-CS_model_checkpoint = "bert-base-chinese"
-QA_model_checkpoint = "bert-base-chinese"
+# hfl/chinese-roberta-wwm-ext
+tokenizer_checkpoint = "hfl/chinese-roberta-wwm-ext"
+CS_model_checkpoint = "hfl/chinese-roberta-wwm-ext"
+QA_model_checkpoint = "hfl/chinese-roberta-wwm-ext"
 batch_size = 2
 num_epoch = 1
 set_seed = 0
-max_length = 384
+max_length = 512 # 384 -> 512
 stride = 128
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 #%%
-device = "cuda" if torch.cuda.is_available() else "cpu"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
+"""## Set Seeds"""
 # Fix random seed for reproducibility
 def same_seeds(seed):
     torch.manual_seed(seed)
@@ -140,6 +137,7 @@ from transformers import AutoModelForMultipleChoice
 model = AutoModelForMultipleChoice.from_pretrained(CS_model_checkpoint).to(device)
 
 #%%
+"""## Comopute Accuracy"""
 from datasets import load_metric
 
 def compute_metrics(eval_pred):
@@ -249,7 +247,7 @@ QA_valid_dataset["context"] = QA_valid_dataset.apply(get_context, axis=1)
 QA_test_dataset["context"] = QA_test_dataset.apply(get_context, axis=1)
 
 #%%
-"""## Squad answers format"""
+"""## Squad answers Format"""
 def to_squad_answers_format(x):
     return {'answer_start': [x['answer']['start']], 'text':[x['answer']['text']]}
 
@@ -257,13 +255,13 @@ QA_train_dataset['answers'] = QA_train_dataset.apply(to_squad_answers_format, ax
 QA_valid_dataset['answers'] = QA_valid_dataset.apply(to_squad_answers_format, axis=1)
 
 #%%
-"""## Keep needed columns only"""
+"""## Keep Needed Columns Only"""
 QA_train_dataset = QA_train_dataset[['id', 'question', 'context', 'answers']]
 QA_valid_dataset = QA_valid_dataset[['id', 'question', 'context', 'answers']]
 QA_test_dataset = QA_test_dataset[['id', 'question', 'context']]
 
 #%%
-"""## QA data To Dataset"""
+"""## QA Data To Dataset"""
 QA_train_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_train_dataset))
 QA_valid_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_valid_dataset))
 QA_test_dataset = Dataset.from_pandas(pd.DataFrame(data=QA_test_dataset))
@@ -355,7 +353,7 @@ from transformers import AutoModelForQuestionAnswering
 model = AutoModelForQuestionAnswering.from_pretrained(QA_model_checkpoint).to(device)
 
 #%%
-# Post-processing:
+"""## Post-processing & Compute Exact-Match"""
 from transformers import EvalPrediction
 from utils_qa import postprocess_qa_predictions
 from datasets import load_metric
@@ -433,23 +431,8 @@ trainer.train()
 """## Save QA Model"""
 trainer.save_model(f'./model/{output_name}/QA')
 
-# #%%
-# """## Load Answerer"""
-# from transformers import QuestionAnsweringPipeline
-# question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, args_parser=training_args, device=0)
-
-# #%%
-# """## Answer questions"""
-# predictions = question_answerer(question=QA_test_dataset['question'], context=QA_test_dataset['context'])
-
-# #%%
-# """## Generate output file"""
-# predictions_df = pd.DataFrame(predictions)
-# answer_test_dataset = pd.DataFrame(QA_test_dataset)
-# answer_test_dataset['answer'] = predictions_df['answer']
-# answer_test_dataset[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
-
 #%%
+"""## Preprocess Test Data"""
 def QA_preprocess_test_examples(examples):
     questions = [q.strip() for q in examples["question"]]
     inputs = tokenizer(
@@ -482,6 +465,7 @@ def QA_preprocess_test_examples(examples):
 tokenized_QA_test_dataset = QA_test_dataset.map(QA_preprocess_test_examples, batched=True, remove_columns=QA_test_dataset.column_names)
 
 #%%
+"""## Generate Predictions"""
 predictions = trainer.predict(tokenized_QA_test_dataset, QA_test_dataset)
 predictions_df = pd.DataFrame(predictions)
 predictions_df['answer'] = predictions_df['prediction_text']
