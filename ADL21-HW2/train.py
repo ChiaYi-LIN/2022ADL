@@ -17,18 +17,17 @@ from transformers import (
     Trainer, 
 )
 
-output_name = "bert_stride128_em"
+output_name = "bert_correct"
 # bert-base-chinese
 # hfl/chinese-bert-wwm-ext
 tokenizer_checkpoint = "bert-base-chinese"
 CS_model_checkpoint = "bert-base-chinese"
 QA_model_checkpoint = "bert-base-chinese"
-batch_size = 1
-gradient_accumulation_steps = 2
+batch_size = 2
 num_epoch = 1
 set_seed = 0
 max_length = 384
-stride = 50
+stride = 128
 
 #%%
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -69,7 +68,7 @@ def unfold_questions(mode, questions):
             relevant = question['relevant']
             # label key
             label = paragraphs.index(relevant)
-            question['label'] = label
+            question['labels'] = label
 
         # context key
         for i in range(4):
@@ -142,12 +141,19 @@ model = AutoModelForMultipleChoice.from_pretrained(CS_model_checkpoint).to(devic
 
 #%%
 from datasets import load_metric
-metric_acc = load_metric("accuracy")
 
 def compute_metrics(eval_pred):
+    metrics = ["accuracy"] #List of metrics to return (others: "recall", "precision", "f1")
+    metric={}
+    for met in metrics:
+       metric[met] = load_metric(met)
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
-    return metric_acc.compute(predictions=predictions, references=labels)
+    metric_res={}
+    for met in metrics:
+        metric_res[met]=metric[met].compute(predictions=predictions, references=labels)[met]
+    print(metric_res)
+    return metric_res
 
 #%%
 """## Trainer"""
@@ -159,21 +165,19 @@ training_args = TrainingArguments(
     overwrite_output_dir=True,
     evaluation_strategy="steps",
     per_device_train_batch_size=batch_size,
-    gradient_accumulation_steps=gradient_accumulation_steps,
-    gradient_checkpointing=True,
     fp16=True,
     per_device_eval_batch_size=batch_size,
     optim='adamw_torch',
     learning_rate=3e-5,
-    weight_decay=0.01,
+    # weight_decay=0.01,
     num_train_epochs=num_epoch,
-    # max_steps=5,
-    warmup_steps=500,
+    # warmup_ratio=0.05,
     logging_steps=1000,
+    save_strategy="steps",
     save_steps=1000,
     load_best_model_at_end =True,
     metric_for_best_model='accuracy',
-    label_names=["label"],
+    label_names=["labels"],
 )
 
 trainer = Trainer(
@@ -203,10 +207,10 @@ predict_labels = np.argmax(predictions[0], axis=1)
 """## Add Context Selection into Test Data"""
 def get_relevant(x):
     paragraphs = x['paragraphs']
-    label = int(x['label'])
+    label = int(x['labels'])
     return paragraphs[label]
 CS_test_dataset = pd.DataFrame(test_dataset)
-CS_test_dataset['label'] = predict_labels
+CS_test_dataset['labels'] = predict_labels
 CS_test_dataset['relevant'] = CS_test_dataset.apply(get_relevant, axis=1)
 
 #%%
@@ -233,7 +237,7 @@ CS_test_dataset[0]
 #%%
 """## Prepare Dataset for QA"""
 def get_context(x):
-    label = x['label']
+    label = x['labels']
     context = x[f'context{label}']
     return context
 
@@ -323,6 +327,10 @@ def QA_preprocess_function(examples):
             while idx >= context_start and offset[idx][1] >= end_char:
                 idx -= 1
             end_positions.append(idx + 1)
+
+        inputs["offset_mapping"][i] = [
+            o if sequence_ids[k] == 1 else None for k, o in enumerate(offset)
+        ]
         
     inputs["example_id"] = example_ids
     inputs["start_positions"] = start_positions
@@ -353,7 +361,7 @@ from utils_qa import postprocess_qa_predictions
 from datasets import load_metric
 
 n_best = 20
-max_answer_length = 50
+max_answer_length = 30
 metric = load_metric("squad")
 
 def post_processing_function(examples, features, predictions, stage="eval"):
@@ -370,9 +378,11 @@ def post_processing_function(examples, features, predictions, stage="eval"):
     )
     # Format the result to the format the metric expects.
     formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
-
-    references = [{"id": ex["id"], "answers": ex["answers"]} for ex in examples]
-    return EvalPrediction(predictions=formatted_predictions, label_ids=references)
+    try:
+        references = [{"id": ex["id"], "answers": ex["answers"]} for ex in examples]
+        return EvalPrediction(predictions=formatted_predictions, label_ids=references)
+    except:
+        return formatted_predictions
 
 def compute_metrics(p: EvalPrediction):
     return metric.compute(predictions=p.predictions, references=p.label_ids)
@@ -388,17 +398,15 @@ training_args = TrainingArguments(
     overwrite_output_dir=True,
     evaluation_strategy="steps",
     per_device_train_batch_size=batch_size,
-    gradient_accumulation_steps=gradient_accumulation_steps,
-    gradient_checkpointing=True,
     fp16=True,
     per_device_eval_batch_size=batch_size,
     optim='adamw_torch',
     learning_rate=3e-5,
-    weight_decay=0.01,
+    # weight_decay=0.01,
     num_train_epochs=num_epoch,
-    # max_steps=5,
-    warmup_steps=500,
+    # warmup_ratio=0.05,
     logging_steps=1000,
+    save_strategy="steps",
     save_steps=1000,
     load_best_model_at_end=True,
     metric_for_best_model="exact_match",
@@ -425,20 +433,58 @@ trainer.train()
 """## Save QA Model"""
 trainer.save_model(f'./model/{output_name}/QA')
 
-#%%
-"""## Load Answerer"""
-from transformers import QuestionAnsweringPipeline
-question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, args_parser=training_args, device=0)
+# #%%
+# """## Load Answerer"""
+# from transformers import QuestionAnsweringPipeline
+# question_answerer = QuestionAnsweringPipeline(model=trainer.model, tokenizer=tokenizer, args_parser=training_args, device=0)
+
+# #%%
+# """## Answer questions"""
+# predictions = question_answerer(question=QA_test_dataset['question'], context=QA_test_dataset['context'])
+
+# #%%
+# """## Generate output file"""
+# predictions_df = pd.DataFrame(predictions)
+# answer_test_dataset = pd.DataFrame(QA_test_dataset)
+# answer_test_dataset['answer'] = predictions_df['answer']
+# answer_test_dataset[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
 
 #%%
-"""## Answer questions"""
-predictions = question_answerer(question=QA_test_dataset['question'], context=QA_test_dataset['context'])
+def QA_preprocess_test_examples(examples):
+    questions = [q.strip() for q in examples["question"]]
+    inputs = tokenizer(
+        questions,
+        examples["context"],
+        max_length=max_length,
+        truncation="only_second",
+        stride=stride,
+        return_overflowing_tokens=True,
+        return_offsets_mapping=True,
+        padding="max_length",
+    )
+
+    sample_map = inputs.pop("overflow_to_sample_mapping")
+    example_ids = []
+
+    for i in range(len(inputs["input_ids"])):
+        sample_idx = sample_map[i]
+        example_ids.append(examples["id"][sample_idx])
+
+        sequence_ids = inputs.sequence_ids(i)
+        offset = inputs["offset_mapping"][i]
+        inputs["offset_mapping"][i] = [
+            o if sequence_ids[k] == 1 else None for k, o in enumerate(offset)
+        ]
+
+    inputs["example_id"] = example_ids
+    return inputs
+
+tokenized_QA_test_dataset = QA_test_dataset.map(QA_preprocess_test_examples, batched=True, remove_columns=QA_test_dataset.column_names)
 
 #%%
-"""## Generate output file"""
+predictions = trainer.predict(tokenized_QA_test_dataset, QA_test_dataset)
 predictions_df = pd.DataFrame(predictions)
-answer_test_dataset = pd.DataFrame(QA_test_dataset)
-answer_test_dataset['answer'] = predictions_df['answer']
-answer_test_dataset[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
+predictions_df['answer'] = predictions_df['prediction_text']
+predictions_df[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
 
 #%%

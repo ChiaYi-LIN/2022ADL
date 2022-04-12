@@ -85,6 +85,7 @@ class QuestionAnsweringTrainer(Trainer):
             return output
 
         predictions = self.post_process_function(predict_examples, predict_dataset, output.predictions, "predict")
+        return predictions
         metrics = self.compute_metrics(predictions)
 
         # Prefix all keys with metric_key_prefix + '_'
