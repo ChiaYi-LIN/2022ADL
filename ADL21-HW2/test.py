@@ -13,6 +13,31 @@ from transformers import (
     Trainer, 
 )
 
+#%%
+from argparse import ArgumentParser
+from pathlib import Path
+parser = ArgumentParser()
+parser.add_argument(
+    "--context_file",
+    type=Path,
+    help="Path to the context file.",
+    required=True
+)
+parser.add_argument(
+    "--test_file",
+    type=Path,
+    help="Path to the test file.",
+    required=True
+)
+parser.add_argument(
+    "--pred_file",
+    type=Path,
+    help="Path to the prediction file.",
+    required=True
+)
+args = parser.parse_args()
+
+#%%
 output_name = "roberta_wwm_dup"
 # bert-base-chinese
 # hfl/chinese-roberta-wwm-ext
@@ -30,8 +55,8 @@ def read_data(file):
         data = json.load(reader)
     return data
 
-context = read_data("./data/context.json")
-test_questions = read_data("./data/test.json")
+context = read_data(args.context_file)
+test_questions = read_data(args.test_file)
 test_questions[0]
 
 #%%
@@ -233,6 +258,6 @@ tokenized_QA_test_dataset = QA_test_dataset.map(QA_preprocess_test_examples, bat
 predictions = trainer.predict(tokenized_QA_test_dataset, QA_test_dataset)
 predictions_df = pd.DataFrame(predictions)
 predictions_df['answer'] = predictions_df['prediction_text']
-predictions_df[['id', 'answer']].to_csv(f'./{output_name}.csv', index=False)
+predictions_df[['id', 'answer']].to_csv(args.pred_file, index=False)
 
 #%%
