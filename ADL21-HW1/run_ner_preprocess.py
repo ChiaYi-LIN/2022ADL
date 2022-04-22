@@ -7,16 +7,25 @@ def read_json(filename):
     with open(filename, 'r', encoding='utf-8') as reader:
         return json.load(reader)
 
-def write_json(filename, data):
+def write_json(filename, data, split):
     with open(filename, 'w', encoding='utf-8') as writer:
-        for data in train_data:
-            writer.write(
-                json.dumps({
-                    "id" : data["id"],
-                    "ner_tags" : data["tags"],
-                    "tokens" : data["tokens"],
-                }, ensure_ascii=False)
-            )
+        for row in data:
+            if split == "test":
+                writer.write(
+                    json.dumps({
+                        "id" : row["id"],
+                        "ner_tags" : ["O" for _ in range(len(row["tokens"]))],
+                        "tokens" : row["tokens"],
+                    }, ensure_ascii=False)
+                )
+            else:
+                writer.write(
+                    json.dumps({
+                        "id" : row["id"],
+                        "ner_tags" : row["tags"],
+                        "tokens" : row["tokens"],
+                    }, ensure_ascii=False)
+                )
             writer.write("\n")
 
 #%%
@@ -25,8 +34,8 @@ valid_data = read_json('./data/slot/eval.json')
 test_data = read_json('./data/slot/test.json')
 
 #%%
-write_json("./cache/slot/train_dict.json", train_data)
-write_json("./cache/slot/valid_dict.json", valid_data)
-write_json("./cache/slot/test_dict.json", test_data)
+write_json("./cache/slot/train_dict.json", train_data, "train")
+write_json("./cache/slot/valid_dict.json", valid_data, "valid")
+write_json("./cache/slot/test_dict.json", test_data, "test")
 
 #%%

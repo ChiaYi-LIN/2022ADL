@@ -9,3 +9,4 @@ datasets/
 model/
 logs/
 results/
+tmp/
