@@ -34,8 +34,8 @@ valid_data = read_json('./data/slot/eval.json')
 test_data = read_json('./data/slot/test.json')
 
 #%%
-write_json("./cache/slot/train_dict.json", train_data, "train")
-write_json("./cache/slot/valid_dict.json", valid_data, "valid")
-write_json("./cache/slot/test_dict.json", test_data, "test")
+write_json("./data/slot/train_dict.json", train_data, "train")
+write_json("./data/slot/valid_dict.json", valid_data, "valid")
+write_json("./data/slot/test_dict.json", test_data, "test")
 
 #%%
