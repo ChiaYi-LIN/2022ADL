@@ -1,0 +1,19 @@
+CUDA_VISIBLE_DEVICES=1,2 TOKENIZERS_PARALLELISM=false WANDB_DISABLED=true python run_summarization.py \
+  --model_name_or_path google/mt5-small \
+  --output_dir ./tmp/mt5_small/ \
+  --do_train \
+  --do_eval \
+  --train_file ./data/train.csv \
+  --validation_file ./data/public.csv \
+  --source_prefix "summarize: " \
+  --text_column maintext \
+  --summary_column title \
+  --per_device_train_batch_size 4 \
+  --optim adafactor \
+  --learning_rate 5e-5 \
+  --evaluation_strategy steps \
+  --max_steps 15000 \
+  --max_source_length 256 \
+  --max_target_length 64 \
+  --save_total_limit 3 \
+  --predict_with_generate
