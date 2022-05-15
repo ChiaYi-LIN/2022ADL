@@ -3,8 +3,8 @@ CUDA_VISIBLE_DEVICES=1,2 TOKENIZERS_PARALLELISM=false WANDB_DISABLED=true python
   --output_dir ./tmp/mt5_small/ \
   --do_train \
   --do_eval \
-  --train_file ./data/train.csv \
-  --validation_file ./data/public.csv \
+  --train_file ./data/train.jsonl \
+  --validation_file ./data/public.jsonl \
   --source_prefix "summarize: " \
   --text_column maintext \
   --summary_column title \
@@ -12,7 +12,7 @@ CUDA_VISIBLE_DEVICES=1,2 TOKENIZERS_PARALLELISM=false WANDB_DISABLED=true python
   --optim adafactor \
   --learning_rate 5e-5 \
   --evaluation_strategy steps \
-  --max_steps 15000 \
+  --max_steps 35000 \
   --max_source_length 256 \
   --max_target_length 64 \
   --save_total_limit 3 \
