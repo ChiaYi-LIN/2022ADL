@@ -1,4 +1,4 @@
-python run_summarization.py \
+CUDA_VISIBLE_DEVICES=0,1 python run_summarization.py \
     --model_name_or_path ./tmp/mt5_small \
     --output_dir ./predictions \
     --overwrite_output_dir True \
