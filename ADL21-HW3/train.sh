@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1,2 TOKENIZERS_PARALLELISM=false WANDB_DISABLED=true python run_summarization.py \
+TOKENIZERS_PARALLELISM=false WANDB_DISABLED=true python run_summarization.py \
   --model_name_or_path google/mt5-small \
   --output_dir ./tmp/mt5_small/ \
   --do_train \
