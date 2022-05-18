@@ -10,3 +10,4 @@ model/
 logs/
 results/
 tmp/
+warmup_example_scripts/
