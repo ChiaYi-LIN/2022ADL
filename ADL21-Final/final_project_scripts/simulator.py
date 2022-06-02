@@ -123,12 +123,18 @@ if __name__ == "__main__":
         for index, context in enumerate(
             tqdm(dataset["context"], disable=(not args.disable_output_dialog))
         ):
-            dialog = [context]
+            dialog = []
             if not args.disable_output_dialog:
                 print(f" dialog id: {index}")
             for _ in range(5):
                 inputs = simulator_tokenizer(
-                    ["</s> <s>".join(dialog[-3:])], return_tensors="pt", truncation=True
+                    [
+                        "</s> <s>".join(
+                            ([context] + dialog if len(dialog) < 3 else dialog[-3:])
+                        )
+                    ],
+                    return_tensors="pt",
+                    truncation=True,
                 ).to(device)
                 reply_ids = simulator.generate(**inputs)
                 text = simulator_tokenizer.batch_decode(
@@ -150,7 +156,6 @@ if __name__ == "__main__":
                 if not args.disable_output_dialog:
                     print(f"\033[0;33;49m {'bot: ': ^11}{text} \033[0;0m")
 
-            dialog.pop(0)
             output.append(dialog)
             if not args.disable_output_dialog:
                 print()
